@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <title>Matrix</title>
+        <style>
+            table,
+            th,
+            td {
+                border: 1px solid black;
+                padding: 3px;
+            }
+        </style>
+    </head>
+    <body>
+        <div id="main"></div>
+        <script src="../visualization/libs/d3.v7.min.js"></script>
+        <script src="../visualization/libs/NetV.min.js"></script>
+        <script src="../visualization/libs/pixi.js"></script>
+        <script src="../visualization/scripts/draw.js"></script>
+        <script src="../visualization/parser.js"></script>
+        <script>
+            const DATASETS = {
+                chesapeake: "chesapeake",
+                everglades: "everglades",
+                lesmis: "lesmis",
+                radoslaw: "radoslaw",
+                jazz: "jazz",
+                visbrazil: "visbrazil",
+                sch: "sch",
+                econ_wm2: "econ-wm2",
+                netscience: "netscience",
+                dwt_419: "dwt_419",
+                socfb_Caltech36: "socfb-Caltech36",
+                asoiaf: "asoiaf",
+                petster_hamster: "petster-hamster",
+                price_1000: "price_1000",
+                bn_mouse: "bn-mouse",
+                wiki_talk_br: "wiki_talk_br",
+                wiki_edit_eu: "wiki_edit_eu",
+                bio_grid_mouse: "bio-grid-mouse",
+
+                bio_grid_plant: "bio-grid-plant",
+                bn_fly: "bn-fly",
+            }
+            const ALGORITHMS = {
+                greedy_ordering: "greedy_ordering",
+                randomized_ordering: "randomized_ordering",
+                MinLA: "MinLA",
+                biclustering: "biclustering",
+                evolutionary_reorder: "evolutionary_reorder",
+                optimal_leaf_ordering: "optimal_leaf_ordering",
+                MDS: "MDS",
+                rank_two: "rank_two",
+                optimal_leaf_ordering_delta: "optimal_leaf_ordering-delta",
+            }
+            const algmap = {
+                biclustering: "Biclustering",
+                CuthillMckee: "CM",
+                evolutionary_reorder: "Evolutionary",
+                MDS: "MDS",
+                MinLA: "MinLA",
+                optimal_leaf_ordering: "LO",
+                "optimal_leaf_ordering-delta": "LO-δI",
+                rank_two: "Rank-Two",
+                greedy_ordering: "GRD",
+                randomized_ordering: "RDM",
+            }
+            const width = 700
+            const height = 700
+            const size = 0.8
+
+            const mainDIV = d3.select("#main")
+            const div = mainDIV.append("div").style("margin", "10px")
+            div.append("label").text("Select a dataset: ")
+            const select = div.append("select")
+            const options = select
+                .selectAll("option")
+                .data(Object.values(DATASETS))
+                .enter()
+                .append("option")
+                .attr("value", (d) => d)
+                .text((d) => d)
+            select.on("change", (event) => {
+                const dataset = event.target.value
+                configs = []
+                Object.values(ALGORITHMS).forEach((algorithm) => {
+                    configs.push({
+                        path: "./matrix/",
+                        dataset,
+                        algorithm,
+                    })
+                })
+                main()
+            })
+
+            let configs = []
+            Object.values(ALGORITHMS).forEach((algorithm) => {
+                configs.push({
+                    path: "./matrix/",
+                    dataset: Object.values(DATASETS)[0],
+                    algorithm,
+                })
+            })
+            const pixiMatrices = []
+            const orders = []
+            main()
+            async function main() {
+                mainDIV.selectAll("div.matrix").remove()
+                const canvases = []
+                for (let i = 0; i < configs.length; i++) {
+                    const config = configs[i]
+                    const pixiMatrix = await drawMatrix(config, i + 1)
+
+                    const canvas = pixiMatrix.canvas
+                    canvases.push(canvas)
+                }
+                // canvases.forEach((canvas, i) => {
+                //     canvas.toBlob(function (blob) {
+                //         saveAs(
+                //             blob,
+                //             `${configs[i].dataset}-${configs[i].algorithm}`
+                //         )
+                //     })
+                // })
+            }
+            async function drawMatrix(config, number) {
+                const filePath = `${config.path}${config.dataset}-${config.algorithm}.matrix.json`
+                const { information, matrix } = await parseMatrix(filePath)
+                console.log(information)
+                let div = d3
+                    .select("#main")
+                    .append("div")
+                    .classed("matrix", true)
+                function codeInt(n) {
+                    return `<code style='font-family: consolas; font-weight: bold; color: #0C5196'>${parseFloat(
+                        n
+                    ).toFixed(2)}</code>`
+                }
+                // div.append("H1").html(`#${number}`)
+                // div.append("p").html(`Dataset: ${config.dataset}`)
+                div.append("p").html(`Algorithm: ${algmap[information.name]}`)
+                div.append("p").html(
+                    `LA: ${codeInt(information.LA)}, PR: ${codeInt(
+                        information.PR
+                    )}, BW:\t${codeInt(information.BW)}, MI:\t${codeInt(
+                        information.MI
+                    )}`
+                )
+                div.style("border", "1px solid gray")
+                    .style("display", "inline-block")
+                    .style("padding", "10px")
+                div = div.append("div").style("position", "relative")
+
+                const n = matrix.length
+
+                const cellWidth = (width * size) / n
+                const cellHeight = (height * size) / n
+                const left = (width * (1 - size)) / 2
+                const right = width * (0.5 + size / 2)
+                const top = (height * (1 - size)) / 2
+                const bottom = height * (0.5 + size / 2)
+
+                const cells = []
+                matrix.forEach((row, i) => {
+                    row.forEach((cell, j) => {
+                        if (cell) {
+                            cells.push([i, j])
+                        }
+                    })
+                })
+
+                const order = information.nodes.map((node) => +node)
+                const container = document.createElement("div")
+                d3.select(container)
+                    .style("width", `${width / 4}px`)
+                    .style("height", `${height / 4}px`)
+                    .style("display", "inline-block")
+                const pixiMatrix = drawMatrixPixi(
+                    information,
+                    cells,
+                    div.node(),
+                    n,
+                    {
+                        width,
+                        height,
+                        cellWidth,
+                        cellHeight,
+                        left,
+                        right,
+                        top,
+                        bottom,
+                    },
+                    /* highlight callback */ (start, end) => {
+                        pixiMatrices.forEach((matrix, i) => {
+                            matrix.forEach((row) =>
+                                row.forEach((rect) => {
+                                    if (rect) rect.unhighlight()
+                                })
+                            )
+                        })
+                        clearGraph(container)
+                        const nodes = order.slice(start, end) // x direction
+                        pixiMatrices.forEach((matrix, i) => {
+                            const order = orders[i]
+                            const rows = nodes.map((node) =>
+                                order.indexOf(node)
+                            )
+                            const columns = rows
+                            rows.forEach((i) => {
+                                columns.forEach((j) => {
+                                    if (matrix[i] == undefined) {
+                                        debugger
+                                    }
+                                    const rect = matrix[i][j]
+                                    if (rect) rect.highlight()
+                                })
+                            })
+                        })
+                        const subMatrix = tailorMatrix(
+                            matrix,
+                            d3.range(start, end)
+                        )
+                        const graph = matrix2graph(subMatrix)
+                        drawGraph(container, graph, {
+                            width: width / 4,
+                            height: height / 4,
+                        })
+                    },
+                    /* clear callback */ (start, end) => {
+                        // const nodes = order.slice(start, end) // x direction
+                        // pixiMatrices.forEach((matrix, i) => {
+                        //     const order = orders[i]
+                        //     const rows = nodes.map((node) =>
+                        //         order.indexOf(node)
+                        //     )
+                        //     const columns = rows
+                        //     rows.forEach((i) => {
+                        //         columns.forEach((j) => {
+                        //             const rect = matrix[i][j]
+                        //             if (rect) rect.unhighlight()
+                        //         })
+                        //     })
+                        // })
+                        // clearGraph(container)
+                    }
+                )
+                pixiMatrices.push(pixiMatrix)
+                orders.push(order)
+                div.node().appendChild(container)
+                return pixiMatrix
+            }
+            function tailorMatrix(matrix, rows) {
+                const subMatrix = []
+                rows.forEach((i) => {
+                    const row = []
+                    subMatrix.push(row)
+                    rows.forEach((j) => {
+                        row.push(matrix[i][j])
+                    })
+                })
+                return subMatrix
+            }
+            function matrix2graph(matrix) {
+                const nodes = []
+                const links = []
+                const linksTraversal = new Set()
+                matrix.forEach((row, i) => {
+                    nodes.push({ id: i })
+                    row.forEach((cell, j) => {
+                        if (cell && !linksTraversal.has(`${i}-${j}`)) {
+                            links.push({
+                                source: i,
+                                target: j,
+                            })
+                            linksTraversal.add(`${i}-${j}`)
+                            linksTraversal.add(`${j}-${i}`)
+                        }
+                    })
+                })
+                const graph = {
+                    nodes,
+                    links,
+                }
+                return graph
+            }
+            function drawGraph(container, graph, { width, height }) {
+                const netv = new NetV({
+                    container,
+                    node: {
+                        style: {
+                            r: 5,
+                            strokeWidth: 0,
+                            fill: { r: 1, g: 127 / 255, b: 14 / 255, a: 1 },
+                        },
+                    },
+                    link: {
+                        style: {
+                            strokeWidth: 2.5,
+                            strokeColor: {
+                                r: 153 / 255,
+                                g: 153 / 255,
+                                b: 153 / 255,
+                                a: 1,
+                            },
+                        },
+                    },
+                    width,
+                    height,
+                    backgroundColor: {
+                        r: 0,
+                        g: 0,
+                        b: 0,
+                        a: 0,
+                    },
+                })
+
+                const id2node = graph.nodes.reduce((map, node) => {
+                    map[node.id] = node
+                    return map
+                }, {})
+
+                const hub = 13
+                const spokes = [1, 0, 10, 2, 7, 9, 12, 8, 11, 4, 3, 5, 6]
+                id2node[hub].x = 0
+                id2node[hub].y = 0
+                spokes.forEach((id, i) => {
+                    const theta = (i / spokes.length) * 2 * Math.PI
+                    const x = Math.sin(theta)
+                    const y = Math.cos(theta)
+                    id2node[id].x = x
+                    id2node[id].y = y
+                })
+
+                const data = NetV.Utils.transformGraphPosition(
+                    graph,
+                    width / 2,
+                    height / 2,
+                    Math.min(width / 2, height / 2) * 0.9
+                )
+                netv.data(data)
+
+                const simulation = d3
+                    .forceSimulation(data.nodes)
+                    .force(
+                        "link",
+                        d3.forceLink(data.links).id((d) => d.id)
+                    )
+                    .force("charge", d3.forceManyBody())
+                    .force("center", d3.forceCenter(width / 2, height / 2))
+
+                // simulation.on("tick", () => {
+                //     data.nodes.forEach((n) => {
+                //         const node = netv.getNodeById(n.id)
+                //         node.x(n.x)
+                //         node.y(n.y)
+                //     })
+
+                //     netv.draw()
+                // })
+
+                netv.nodes().forEach((node) =>
+                    node.on("dragging", () => {
+                        console.log(node.id())
+                    })
+                )
+                netv.draw()
+                netv.on("pan", () => {})
+
+                netv.on("zoom", () => {})
+            }
+            function clearGraph(container) {
+                container.innerHTML = ""
+            }
+        </script>
+    </body>
+</html>

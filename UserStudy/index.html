@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <title>Matrix</title>
+        <style>
+            table,
+            th,
+            td {
+                border: 1px solid black;
+                padding: 3px;
+            }
+            rect.cell {
+                fill: #333;
+            }
+            rect.cell.brushed {
+                fill: red;
+            }
+            rect.cell.labeled {
+                fill: #ddd;
+            }
+            .radio button {
+                margin-top: 12px;
+                margin-right: 12px;
+                cursor: pointer;
+                opacity: 0.7;
+                border: 1px solid #9d9d9d;
+                border-radius: 2px;
+                color: white;
+                height: 40px;
+                font-size: 20px;
+            }
+            .radio button:hover {
+                opacity: 0.85;
+            }
+            .radio button:active {
+                opacity: 1;
+            }
+        </style>
+        <style>
+            .container {
+                display: inline-block;
+                position: relative;
+                margin-right: 12px;
+                cursor: pointer;
+                font-size: 22px;
+                -webkit-user-select: none;
+                -moz-user-select: none;
+                -ms-user-select: none;
+                user-select: none;
+                border: 1px solid #9d9d9d;
+                background-color: #efefef;
+                border-radius: 10px;
+                overflow: hidden;
+            }
+
+            /* Hide the browser's default radio button */
+            .container input {
+                position: absolute;
+                opacity: 0;
+                cursor: pointer;
+            }
+
+            /* Create a custom radio button */
+            .checkmark {
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                border-radius: 0;
+                background-color: #eee;
+            }
+
+            /* On mouse-over, add a grey background color */
+            .container:hover input ~ .checkmark {
+                background-color: #ccc;
+            }
+
+            /* When the radio button is checked, add a blue background */
+            .container input:checked ~ .checkmark {
+                background-color: #2196f3;
+                width: 100%;
+                height: 100%;
+                border-radius: 0;
+            }
+
+            /* Create the indicator (the dot/circle - hidden when not checked) */
+            .checkmark:after {
+                content: "";
+                position: absolute;
+                display: none;
+            }
+
+            /* Show the indicator (dot/circle) when checked */
+            .container input:checked ~ .checkmark:after {
+                display: block;
+                background: white;
+            }
+
+            /* Style the indicator (dot/circle) */
+            .container .checkmark:after {
+                top: 9px;
+                left: 9px;
+                width: 8px;
+                height: 8px;
+                border-radius: 50%;
+                background: white;
+            }
+        </style>
+    </head>
+    <body>
+        <div id="main"></div>
+        <script src="../visualization/libs/d3.v7.min.js"></script>
+        <script src="../visualization/libs/pixi.js"></script>
+        <script src="../visualization/scripts/draw.js"></script>
+        <script src="../visualization/parser.js"></script>
+        <script src="../visualization/libs/papaparse.js"></script>
+        <script src="./patterns.js"></script>
+        <script>
+            function getQueryVariable(variable) {
+                var query = window.location.search.substring(1)
+                var vars = query.split("&")
+                for (var i = 0; i < vars.length; i++) {
+                    var pair = vars[i].split("=")
+                    if (pair[0] == variable) {
+                        return pair[1]
+                    }
+                }
+                return false
+            }
+            function shuffle(array) {
+                let currentIndex = array.length,
+                    randomIndex
+
+                // While there remain elements to shuffle.
+                while (currentIndex != 0) {
+                    // Pick a remaining element.
+                    randomIndex = Math.floor(Math.random() * currentIndex)
+                    currentIndex--
+
+                    // And swap it with the current element.
+                    ;[array[currentIndex], array[randomIndex]] = [
+                        array[randomIndex],
+                        array[currentIndex],
+                    ]
+                }
+
+                return array
+            }
+            function fullpermutate(str) {
+                var result = []
+                if (str.length > 1) {
+                    for (var m = 0; m < str.length; m++) {
+                        var left = str[m]
+                        var rest = str
+                            .slice(0, m)
+                            .concat(str.slice(m + 1, str.length))
+                        var preResult = fullpermutate(rest)
+                        for (var i = 0; i < preResult.length; i++) {
+                            var tmp = [left].concat(preResult[i])
+                            result.push(tmp)
+                        }
+                    }
+                } else if (str.length == 1) {
+                    result.push(str)
+                }
+                return result
+            }
+            const ALGORITHMS = {
+                biclustering: "biclustering",
+                evolutionary_reorder: "evolutionary_reorder",
+                greedy_ordering: "greedy_ordering",
+                MDS: "MDS",
+                MinLA: "MinLA",
+                optimal_leaf_ordering_delta: "optimal_leaf_ordering-delta",
+                optimal_leaf_ordering: "optimal_leaf_ordering",
+                randomized_ordering: "randomized_ordering",
+                rank_two: "rank_two",
+            }
+            let startTime = new Date()
+            const result = { times: [], tasks: [] }
+            const width = 600
+            const height = 600
+            const size = 0.8
+            const path = "./matrix/"
+            const algorithmPermutate = fullpermutate([
+                "LeafOrder-δI",
+                "Ours (GRD)",
+                "MinLA",
+                "Ours (RDM)",
+            ]).filter((_, i) => i % 2) // , "origin"
+            const userid = +getQueryVariable("userid")
+            const algorithms =
+                algorithmPermutate[userid % algorithmPermutate.length]
+            console.log(algorithms)
+            let number = 0
+            let isProgressiveBrush = false
+            main()
+            async function main() {
+                const response = await fetch("./probabilities.csv")
+                const promise = response.text()
+                const content = Papa.parse(await promise.then()).data
+                const probabilityNames = content[0]
+                const probabilities = content
+                    .slice(1)
+                    .filter((ps) => ps.length === 3)
+                    .map((ps) => {
+                        const map = {}
+                        probabilityNames.forEach((name, i) => {
+                            map[name] = +ps[i]
+                        })
+                        return map
+                    })
+
+                let configs = probabilities
+                    .map((probability) =>
+                        algorithms.map((algorithm) => ({
+                            path,
+                            dataset: `synthetic-${probabilityNames
+                                .map((name) => probability[name])
+                                .join("-")}`,
+                            algorithm,
+                        }))
+                    )
+                    .flat()
+                shuffle(configs)
+                await drawMatrix(configs)
+            }
+            async function drawMatrix(configs, lastLabeledInfo = undefined) {
+                if (number >= configs.length) {
+                    document.write(JSON.stringify(result))
+                    function downloadObjectAsJson(exportObj, exportName) {
+                        const dataStr =
+                            "data:text/json;charset=utf-8," +
+                            encodeURIComponent(JSON.stringify(exportObj))
+                        const downloadAnchorNode = document.createElement("a")
+                        downloadAnchorNode.setAttribute("href", dataStr)
+                        downloadAnchorNode.setAttribute(
+                            "download",
+                            exportName + ".json"
+                        )
+                        document.body.appendChild(downloadAnchorNode) // required for firefox
+                        downloadAnchorNode.click()
+                        downloadAnchorNode.remove()
+                    }
+                    downloadObjectAsJson(result, `${userid}-${+new Date()}`)
+                }
+                const config = configs[number]
+                const filePath = `${config.path}${config.dataset}-${config.algorithm}.matrix.json`
+                const { information, matrix } = await parseMatrix(filePath)
+                d3.select("#main").html("")
+                const div = d3.select("#main").append("div")
+                const dataset = `${config.dataset}-${config.algorithm}`
+
+                const labeledInfo = lastLabeledInfo
+                    ? lastLabeledInfo
+                    : {
+                          dataset: config.dataset,
+                          algorithm: config.algorithm,
+                          label: [],
+                          order: information.order,
+                      }
+
+                // .style("display", "inline-block")
+                function codeInt(n) {
+                    return `<code style='font-family: consolas; font-weight: bold; color: #0C5196'>${parseInt(
+                        n
+                    )}</code>`
+                }
+
+                const n = matrix.length
+
+                const cellWidth = (width * size) / n
+                const cellHeight = (height * size) / n
+                const left = (width * (1 - size)) / 2
+                const right = width * (0.5 + size / 2)
+                const top = (height * (1 - size)) / 2
+                const bottom = height * (0.5 + size / 2)
+
+                div.append("H1")
+                    .html(`#${number}/${configs.length}`)
+                    .style("margin-left", `${left}px`)
+                // div.append("p").html(`Dataset: ${dataset}`)
+
+                const cells = matrix2cells(matrix)
+                function matrix2cells(matrix) {
+                    const cells = []
+                    matrix.forEach((row, i) => {
+                        row.forEach((cell, j) => {
+                            if (cell) {
+                                cells.push([i, j])
+                            }
+                        })
+                    })
+                    return cells
+                }
+
+                const svg = div
+                    .append("svg")
+                    .attr("width", width)
+                    .attr("height", height)
+                    .attr("viewBox", [0, 0, width, height])
+
+                // 聚类信息，一个嵌套两层的矩阵，第一层是聚类，第二层是每个聚类的节点id
+                if ("clustering" in information) {
+                    const node2cluster = {} // 节点id映射到cluster的index上
+                    information.clustering.forEach((cluster, i) => {
+                        cluster.forEach((node) => {
+                            node2cluster[node] = i
+                        })
+                    })
+
+                    let clusterBars = [] // 用于在边上画一些bar
+                    for (let i = 1; i <= n; i++) {
+                        if (
+                            node2cluster[information.nodes[i]] !==
+                                node2cluster[information.nodes[i - 1]] ||
+                            i == n
+                        ) {
+                            const lastBarWidth =
+                                clusterBars[clusterBars.length - 2]?.width ?? 0
+                            const lastBarX =
+                                clusterBars[clusterBars.length - 2]?.x ?? left
+                            const barWidth =
+                                left + i * cellWidth - lastBarWidth - lastBarX
+                            const barX = lastBarX + lastBarWidth
+                            const barHeight = cellHeight * 2
+                            clusterBars.push({
+                                // 横向的bar
+                                start:
+                                    clusterBars[clusterBars.length - 2]?.end ??
+                                    0,
+                                end: i,
+                                width: barWidth,
+                                height: barHeight,
+                                x: barX,
+                                y: top - barHeight * 1.5,
+                                cluster: node2cluster[information.nodes[i - 1]],
+                            })
+                            clusterBars.push({
+                                // 纵向的bar
+                                start:
+                                    clusterBars[clusterBars.length - 2]?.end ??
+                                    0,
+                                end: i,
+                                width: barHeight,
+                                height: barWidth,
+                                x: top - barHeight * 1.5,
+                                y: barX,
+                                cluster: node2cluster[information.nodes[i - 1]],
+                            })
+                        }
+                    }
+                    information.clustering = information.clustering.map(
+                        (cluster) => new Set(cluster)
+                    )
+                    clusterBars = clusterBars.filter(
+                        (clusterBar) =>
+                            information.clustering[clusterBar.cluster].size > 1
+                    )
+                    svg.selectAll("rect.cluster")
+                        .data(clusterBars)
+                        .enter()
+                        .append("rect")
+                        .classed("cluster", true)
+                        .attr("x", (d) => d.x)
+                        .attr("y", (d) => d.y)
+                        .attr("width", (d) => d.width)
+                        .attr("height", (d) => d.height)
+                        .style("fill", "#F2F2F2")
+                        .style("stroke", "#9F9F9F")
+                        .style("stroke-width", 2)
+                        .on("mouseover", (d) => {
+                            // 悬浮高亮
+                            const cluster = d.cluster
+                            const nodes = information.clustering[cluster]
+                            svg.selectAll("rect.cell").style(
+                                "fill",
+                                ([i, j]) => {
+                                    const idi = information.nodes[i]
+                                    const idj = information.nodes[j]
+                                    if (!(nodes.has(idi) || nodes.has(idj))) {
+                                        return "#ccc"
+                                    } else {
+                                        return "#000"
+                                    }
+                                }
+                            )
+                            ;[verticalLineGroup, horizonLineGroup].forEach(
+                                (group) => {
+                                    group
+                                        .selectAll("line")
+                                        .style("stroke", (_, i) =>
+                                            i == d.start || i == d.end
+                                                ? "black"
+                                                : "#ccc"
+                                        )
+                                }
+                            )
+                        })
+                        .on("mouseout", (d) => {
+                            svg.selectAll("rect.cell").style("fill", "#000")
+                            svg.selectAll("line").style("stroke", "#ccc")
+                        })
+                }
+
+                /************** *********** **************/
+                /************** draw matrix **************/
+                /************** *********** **************/
+                const labeledCells = new Set()
+                labeledInfo.label.forEach((item) => {
+                    item.cells.forEach((cell) => {
+                        labeledCells.add(`${cell[0]}-${cell[1]}`)
+                        labeledCells.add(`${cell[1]}-${cell[0]}`)
+                    })
+                })
+                const matrixG = drawStatic(
+                    svg,
+                    cells,
+                    {
+                        width,
+                        height,
+                        left,
+                        right,
+                        top,
+                        bottom,
+                        cellWidth,
+                        cellHeight,
+                    },
+                    labeledCells
+                )
+                function drawStatic(
+                    svg,
+                    cells,
+                    {
+                        width,
+                        height,
+                        left,
+                        right,
+                        top,
+                        bottom,
+                        cellWidth,
+                        cellHeight,
+                    },
+                    labeledCells = new Set()
+                ) {
+                    const matrixG = svg.append("g")
+                    matrixG
+                        .append("rect")
+                        .attr("x", left)
+                        .attr("y", top)
+                        .attr("width", width - left * 2)
+                        .attr("height", height - top * 2)
+                        .attr("fill", "transparent")
+
+                    matrixG
+                        .selectAll("rect.cell")
+                        .data(cells)
+                        .enter()
+                        .append("rect")
+                        .classed("cell", true)
+                        .classed("labeled", ([i, j]) =>
+                            labeledCells.has(`${i}-${j}`)
+                        )
+                        .attr("id", ([i, j]) => `cell-${i}-${j}`)
+                        .attr("x", ([i, j]) => left + i * cellWidth)
+                        .attr("y", ([i, j]) => top + j * cellHeight)
+                        .attr("width", cellWidth)
+                        .attr("height", cellHeight)
+
+                    matrixG
+                        .append("line")
+                        .classed("diagonal", true)
+                        .attr("x1", left)
+                        .attr("y1", top)
+                        .attr("x2", right)
+                        .attr("y2", bottom)
+                        // .style("stroke-width", cellHeight / 10)
+                        .style("stroke-width", 1)
+                        .style("stroke", "#ddd")
+
+                    const verticalLineGroup = matrixG.append("g")
+                    const horizonLineGroup = matrixG.append("g")
+                    verticalLineGroup
+                        .selectAll("line")
+                        .data(d3.range(n + 1))
+                        .enter()
+                        .append("line")
+                        .attr("x1", (d, i) => left + i * cellWidth)
+                        .attr("y1", (d, i) => top)
+                        .attr("x2", (d, i) => left + i * cellWidth)
+                        .attr("y2", (d, i) => bottom)
+                        // .style("stroke-width", (d, i) => cellWidth / 10)
+                        .style("stroke-width", (d, i) => 1)
+                        .style("stroke", (d, i) => "#ccc")
+
+                    horizonLineGroup
+                        .selectAll("line")
+                        .data(d3.range(n + 1))
+                        .enter()
+                        .append("line")
+                        .attr("x1", (d, i) => left)
+                        .attr("y1", (d, i) => top + i * cellHeight)
+                        .attr("x2", (d, i) => right)
+                        .attr("y2", (d, i) => top + i * cellHeight)
+                        // .style("stroke-width", cellHeight / 10)
+                        .style("stroke-width", 1)
+                        .style("stroke", (d, i) => "#ccc")
+                    return matrixG
+                }
+
+                /************** *********** **************/
+                /************** draw matrix **************/
+                /************** *********** **************/
+
+                /************** ********* **************/
+                /************** add brush **************/
+                /************** ********* **************/
+                const brush = d3
+                    .brush()
+                    .extent([
+                        [left, top],
+                        [right, bottom],
+                    ])
+                    .on("start", brushstart)
+                    .on("brush", brushed)
+                    .on("end", brushend)
+
+                svg.call(brush)
+                let progressiveBrushed = new Set()
+                function brushstart(event) {
+                    console.log("brush start")
+                    const selection = event.selection
+                    if (!event.sourceEvent || !selection) return
+
+                    if (!isProgressiveBrush) {
+                        matrixG.selectAll("rect.cell").each(function ([i, j]) {
+                            const cell = d3.select(this)
+                            cell.classed("brushed", false)
+                        })
+                    } else {
+                        progressiveBrushed = new Set()
+                        matrixG
+                            .selectAll("rect.cell.brushed")
+                            .each(function ([i, j]) {
+                                progressiveBrushed.add(`${i}-${j}`)
+                            })
+                    }
+                }
+
+                function brushed(event) {
+                    const selection = event.selection
+                    if (!event.sourceEvent || !selection) return
+                    let [[x0, y0], [x1, y1]] = selection
+                    const [i0, i1, j0, j1] = [
+                        Math.floor((x0 - left) / cellWidth),
+                        Math.ceil((x1 - left) / cellWidth),
+                        Math.floor((y0 - top) / cellHeight),
+                        Math.ceil((y1 - top) / cellHeight),
+                    ]
+                    x0 = i0 * cellWidth + left
+                    x1 = i1 * cellWidth + left
+                    y0 = j0 * cellHeight + top
+                    y1 = j1 * cellHeight + top
+                    // Math.max(x1 - x0, y1 - y0)
+                    d3.select(this).call(brush.move, [
+                        [x0, y0],
+                        [x1, y1],
+                    ])
+                    matrixG.selectAll("rect.cell").each(function ([i, j]) {
+                        const isSelected =
+                            (i >= i0 && i < i1 && j >= j0 && j < j1) ||
+                            (j >= i0 && j < i1 && i >= j0 && i < j1) // symmetrical
+                        const cell = d3.select(this)
+                        if (isSelected) {
+                            cell.classed("brushed", true)
+                        } else {
+                            if (
+                                !isProgressiveBrush ||
+                                !progressiveBrushed.has(`${i}-${j}`) // last brushed
+                            ) {
+                                cell.classed("brushed", false)
+                            }
+                        }
+                    })
+                }
+                function brushend() {
+                    isProgressiveBrush = false
+                }
+                document.addEventListener(
+                    "keydown",
+                    (event) => {
+                        const name = event.key
+                        const code = event.code
+                        console.log(code)
+                        if (code == "Equal") {
+                            svg.call(brush.move, null)
+                            isProgressiveBrush = true
+                        }
+                    },
+                    false
+                )
+                svg.on("click", function (event) {
+                    console.log("click")
+
+                    const cx = event.offsetX - left
+                    const cy = event.offsetY - top
+                    const ci = Math.floor(cx / cellWidth)
+                    const cj = Math.floor(cy / cellHeight)
+                    matrixG.selectAll("rect.cell").each(function ([i, j]) {
+                        const cell = d3.select(this)
+                        if (
+                            ((ci == i && cj == j) || (ci == j && cj == i)) &&
+                            !cell.classed("labeled")
+                        ) {
+                            cell.classed("brushed", !cell.classed("brushed"))
+                        }
+                    })
+
+                    // offsetX, offsetY
+                })
+                /************** ********* **************/
+                /************** add brush **************/
+                /************** ********* **************/
+
+                /*********** *************** ***********/
+                /*********** radio selection ***********/
+                /*********** *************** ***********/
+                const radioWidth = 400
+                const radioDiv = div
+                    .append("div")
+                    .classed("radio", true)
+                    .style("display", "inline-block")
+                    .style("vertical-align", "top")
+                    .style("width", `${radioWidth}px`)
+                    .style("margin-top", `${top}px`)
+                const patterns = PATTERNS
+                Object.keys(patterns).forEach((name) => {
+                    const svgWidth = radioWidth / 3
+                    const pattern = patterns[name]
+                    const div = radioDiv
+                        .append("label")
+                        .classed("container", true)
+                        .style("width", `${svgWidth + 40}px`)
+                        .style("height", `${svgWidth + 60}px`)
+                    div.append("input")
+                        .attr("type", "radio")
+                        .attr("value", name)
+                        .attr("name", dataset)
+                    div.append("span").classed("checkmark", true)
+                    div.append("p")
+                        .style("position", "absolute")
+                        .style("left", "20px")
+                        .style("margin", "0")
+                        .style("top", "5px")
+                        .text(name)
+                    const patternSVG = div
+                        .append("svg")
+                        .attr("width", svgWidth)
+                        .attr("height", svgWidth)
+                        .style("position", "absolute")
+                        .style("background", "white")
+                        .style("left", 20)
+                        .style("top", 40)
+
+                    drawStatic(patternSVG, matrix2cells(pattern), {
+                        width: svgWidth,
+                        height: svgWidth,
+                        left: 0,
+                        right: svgWidth,
+                        top: 0,
+                        bottom: svgWidth,
+                        cellWidth: svgWidth / pattern.length,
+                        cellHeight: svgWidth / pattern.length,
+                    })
+                })
+
+                radioDiv
+                    .append("button")
+                    .style("width", `${radioWidth / 3.5}px`)
+                    .style("background", "#0061b0")
+                    .text("Confirm")
+                    .on("click", () => {
+                        const ele = document.getElementsByName(dataset)
+                        let selection = undefined
+                        for (i = 0; i < ele.length; i++) {
+                            if (ele[i].checked) {
+                                selection = ele[i].value
+                                ele[i].checked = false
+                                break
+                            }
+                        }
+                        if (!selection) {
+                            alert("You should choose one type of pattern!")
+                        } else {
+                            const selectedCells = matrixG
+                                .selectAll("rect.cell.brushed")
+                                .filter(function () {
+                                    return !d3.select(this).classed("labeled")
+                                })
+                            if (selectedCells.empty()) {
+                                alert("You should brush at least one cell!")
+                            } else {
+                                selectedCells.classed("labeled", true)
+                            }
+
+                            // mark cells as pattern
+                            labeledInfo.label.push({
+                                cells: matrixG
+                                    .selectAll("rect.cell.brushed")
+                                    .data(),
+                                label: selection,
+                            })
+
+                            matrixG
+                                .selectAll("rect.cell")
+                                .classed("brushed", false)
+                            svg.call(brush.move, null)
+                        }
+                    })
+                radioDiv
+                    .append("button")
+                    .style("width", `${radioWidth / 3.5}px`)
+                    .style("background", "#9ECA65")
+                    .text("Previous")
+                    .on("click", () => {
+                        if (number >= 1) {
+                            number -= 1
+                            const lastLabeledInfo = result.tasks.pop()
+                            const lastTime = result.times.pop()
+                            startTime = new Date() - lastTime
+                            drawMatrix(configs, lastLabeledInfo)
+                        }
+                    })
+                radioDiv
+                    .append("button")
+                    .style("width", `${radioWidth / 3.5}px`)
+                    .style("background", "#C42B1C")
+                    .text("Next")
+                    .on("click", () => {
+                        number += 1
+                        let endTime = new Date()
+                        result.tasks.push(labeledInfo)
+                        result.times.push(endTime - startTime)
+                        console.log(result)
+                        startTime = endTime
+                        drawMatrix(configs)
+                    })
+                /*********** *************** ***********/
+                /*********** radio selection ***********/
+                /*********** *************** ***********/
+            }
+        </script>
+    </body>
+</html>

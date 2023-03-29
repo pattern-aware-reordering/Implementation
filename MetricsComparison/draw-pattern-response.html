@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <title>Title</title>
+    </head>
+    <body>
+        <div id="main"></div>
+        <script src="../visualization/libs/d3.v7.min.js"></script>
+        <script src="../visualization/parser.js"></script>
+        <script>
+            const svgWidth = 1100
+            const width = 80
+            const height = 80
+            const size = 0.8
+            const fontSize = 48
+            const fontFamily = "Times New Roman"
+            const metrics = ["PR", "LA", "BW", "MI"]
+            const metricTextOffset = 6.5 * width
+            main()
+            async function main() {
+                const configs = [
+                    "Pattern",
+                    { pattern: "block", name: "origin" },
+                    { pattern: "star", name: "origin" },
+                    { pattern: "off-diagonal block", name: "origin" },
+                    { pattern: "bands", name: "origin" },
+                    "Anti Pattern",
+                    { pattern: "anti", name: "origin" },
+                    { pattern: "bandwidth anti", name: "origin" }
+                ]
+                const div = d3.select("#main").append("div")
+                const svg = div
+                    .append("svg")
+                    .attr("width", svgWidth)
+                    .attr("height", height * (configs.length + 1))
+
+                for (let i = 0; i < configs.length; i++) {
+                    if (isString(configs[i])) {
+                        const metricTitleGroup = svg.append("g")
+                        metricTitleGroup
+                            .selectAll("line")
+                            .data([
+                                10,
+                                height,
+                                (d3
+                                    .range(i + 1, configs.length + 1)
+                                    .filter(
+                                        (i) =>
+                                            i >= configs.length ||
+                                            isString(configs[i])
+                                    )[0] -
+                                    i) *
+                                    height,
+                            ])
+                            .enter()
+                            .append("line")
+                            .attr("x1", 0)
+                            .attr("x2", svgWidth)
+                            .attr("y1", (d) => height * i + d)
+                            .attr("y2", (d) => height * i + d)
+                            .attr("stroke", "black")
+                            .attr("stroke-width", 4)
+                        metricTitleGroup
+                            .append("text")
+                            .attr("x", (width * (1 - size)) / 2)
+                            .attr("y", height * i + height / 2 + fontSize / 3)
+                            .attr("font-size", fontSize)
+                            .attr("font-family", fontFamily)
+                            .attr("font-weight", 600)
+                            .text(configs[i])
+                        metricTitleGroup
+                            .selectAll("text.metric")
+                            .data(metrics)
+                            .enter()
+                            .append("text")
+                            .classed("metric", true)
+                            .attr(
+                                "x",
+                                (d, i) =>
+                                    metricTextOffset + i * width * 2 + width / 2
+                            )
+                            .attr("y", height * i + height / 2 + fontSize / 3)
+                            .attr("text-anchor", "middle")
+                            .attr("font-size", fontSize)
+                            .attr("font-family", fontFamily)
+                            .attr("font-weight", 600)
+                            .text((d) => d)
+                    } else {
+                        const { pattern, name } = configs[i]
+                        const path = `./pattern/${pattern.replaceAll(
+                            /\s|\-|\n/g,
+                            "_"
+                        )}-${name}.matrix.json`
+                        const g = await drawMatrix(svg, path)
+                        g.attr("transform", `translate(0, ${i * height})`)
+                            .append("text")
+                            .classed("pattern", true)
+                            .attr("x", width * 1.2)
+                            .attr(
+                                "y",
+                                height / 2 + fontSize / 3 /* vertical offset */
+                            )
+                            .attr("text-anchor", "start")
+                            .attr("font-size", fontSize)
+                            .attr("font-family", fontFamily)
+                            .text(capitalize(pattern))
+                    }
+                }
+            }
+            async function drawMatrix(svg, path) {
+                const { information, matrix } = await parseMatrix(path)
+                const n = matrix.length
+
+                const cellWidth = (width * size) / n
+                const cellHeight = (height * size) / n
+                const left = (width * (1 - size)) / 2
+                const right = width * (0.5 + size / 2)
+                const top = (height * (1 - size)) / 2
+                const bottom = height * (0.5 + size / 2)
+
+                const cells = []
+                matrix.forEach((row, i) => {
+                    row.forEach((cell, j) => {
+                        if (cell) {
+                            cells.push([i, j])
+                        }
+                    })
+                })
+
+                const g = svg.append("g")
+                g.selectAll("rect.cell")
+                    .data(cells)
+                    .enter()
+                    .append("rect")
+                    .classed("cell", true)
+                    .attr("x", ([i, j]) => left + i * cellWidth)
+                    .attr("y", ([i, j]) => top + j * cellHeight)
+                    .attr("width", cellWidth)
+                    .attr("height", cellHeight)
+                    .style("fill", "#333")
+
+                // const verticalLineGroup = g.append("g")
+                // const horizonLineGroup = g.append("g")
+                // verticalLineGroup
+                //     .selectAll("line")
+                //     .data(d3.range(n - 1))
+                //     .enter()
+                //     .append("line")
+                //     .attr("x1", (d, i) => left + (i + 1) * cellWidth)
+                //     .attr("y1", (d, i) => top)
+                //     .attr("x2", (d, i) => left + (i + 1) * cellWidth)
+                //     .attr("y2", (d, i) => bottom)
+                //     // .style("stroke-width", (d, i) => cellWidth / 10)
+                //     .attr("stroke-width", 0.5)
+                //     .attr("stroke", (d, i) => "#ccc")
+
+                // horizonLineGroup
+                //     .selectAll("line")
+                //     .data(d3.range(n - 1))
+                //     .enter()
+                //     .append("line")
+                //     .attr("x1", (d, i) => left)
+                //     .attr("y1", (d, i) => top + (i + 1) * cellHeight)
+                //     .attr("x2", (d, i) => right)
+                //     .attr("y2", (d, i) => top + (i + 1) * cellHeight)
+                //     // .style("stroke-width", cellHeight / 10)
+                //     .attr("stroke-width", 0.5)
+                //     .attr("stroke", (d, i) => "#ccc")
+
+                g.append("rect")
+                    .attr("x", left)
+                    .attr("y", top)
+                    .attr("width", width * size)
+                    .attr("height", height * size)
+                    .attr("fill", "none")
+                    .attr("stroke-width", 0.5)
+                    .attr("stroke", (d, i) => "#ccc")
+
+                const metricValueGroup = g.append("g")
+                metricValueGroup
+                    .selectAll("text")
+                    .data(metrics.map((metric) => information[metric]))
+                    .enter()
+                    .append("text")
+                    .attr(
+                        "x",
+                        (d, i) => metricTextOffset + width * i * 2 + width / 2
+                    )
+                    .attr("y", (d, i) => height / 2 + fontSize / 3)
+                    .attr("text-anchor", "middle")
+                    .attr("font-size", fontSize)
+                    .attr("font-family", fontFamily)
+                    .text((d) => d.toFixed(2))
+
+                return g
+            }
+
+            function capitalize(str) {
+                const arr = str.split(" ")
+                for (var i = 0; i < arr.length; i++) {
+                    arr[i] = arr[i].charAt(0).toUpperCase() + arr[i].slice(1)
+                }
+
+                const str2 = arr.join(" ")
+                return str2
+            }
+            function isString(str) {
+                return typeof str === "string" || str instanceof String
+            }
+        </script>
+    </body>
+</html>

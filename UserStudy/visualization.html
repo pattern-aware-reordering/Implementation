@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <title>User Study Results</title>
+    </head>
+    <body>
+        <div id="my_dataviz"></div>
+        <script src="../visualization/libs/d3.v7.min.js"></script>
+        <script>
+            // set the dimensions and margins of the graph
+            var margin = { top: 30, right: 10, bottom: 60, left: 80 },
+                width = 350 - margin.left - margin.right,
+                height = 350 - margin.top - margin.bottom
+
+            //Read the data
+            d3.json("./results.json").then(
+                // Now I can use this dataset:
+                function (data) {
+                    console.log(data)
+                    const algmap = {
+                        MinLA: "MinLA",
+                        "LeafOrder-δI": "LeafOrder-δI",
+                        "Ours (GRD)": "GRD",
+                        "Ours (RDM)": "RDM",
+                    }
+                    const ours = [
+                        // "greedy_minLA_OLO",
+                        "Ours (GRD)",
+                        "Ours (RDM)",
+                    ]
+                    const algorithms = Object.keys(data["summary"])
+                    const baselines = ours.concat(
+                        algorithms.filter(
+                            (algorithm) => ours.indexOf(algorithm) < 0
+                        )
+                    )
+
+                    const metrics = Object.keys(
+                        data["summary"][algorithms[0]]["ci"]
+                    ).filter(
+                        (key) =>
+                            ["time-per-pattern", "accuracy"].indexOf(
+                                key
+                            ) >= 0
+                    )
+                    // const datasets = Object.keys(data.times[algorithms[0]])
+
+                    const alg2color = function (alg) {
+                        const colormap = {
+                            MinLA: "#a6cee3",
+                            "LeafOrder-δI": "#fdbf6f",
+                            "Ours (GRD)": "#ff7f00",
+                            "Ours (RDM)": "#cab2d6",
+                        }
+                        return colormap[alg]
+                    }
+
+                    // append the svg object to the body of the page
+                    const svg = d3
+                        .select("#my_dataviz")
+                        .append("svg")
+                        .attr(
+                            "width",
+                            2560
+                            // (width + margin.left + margin.right) *
+                            //     (metrics.length + 2)
+                        )
+                        .attr(
+                            "height",
+                            (height + margin.top + margin.bottom) * 2
+                        )
+                        .append("g")
+                        .attr(
+                            "transform",
+                            "translate(" + margin.left + "," + margin.top + ")"
+                        )
+                        .attr(
+                            "style",
+                            "font-size: 30px!important; font-family: 'Times New Roman';"
+                        )
+
+                    /*********** ************************************ ***********/
+                    /*********** Draw Significance Comparision Matrix ***********/
+                    /*********** ************************************ ***********/
+                    const matrixWidth = width
+                    const cellSize = width / baselines.length
+                    drawSigCompMatrix()
+                    function drawSigCompMatrix() {
+                        const matx = d3
+                            .scalePoint()
+                            .domain(baselines.map((d) => algmap[d])) // This is what is written on the Axis: from 0 to 100
+                            .range([cellSize / 2, matrixWidth - cellSize / 2]) // This is where the axis is placed: from 100 px to 800px
+                            .padding([0]) // Goes between 0 and 1. Default is 0
+
+                        const maty = d3
+                            .scalePoint()
+                            .domain(ours.map((d) => algmap[d])) // This is what is written on the Axis: from 0 to 100
+                            .range([
+                                margin.top + cellSize / 2,
+                                margin.top +
+                                    cellSize * ours.length -
+                                    cellSize / 2,
+                            ]) // This is where the axis is placed: from 100 px to 800px
+                            .padding([0]) // Goes between 0 and 1. Default is 0
+
+                        const mat_pos_color = d3
+                            .scaleLinear()
+                            .domain([0, 1])
+                            // .domain([0, 0.05])
+                            .range(["#EC6B41", "white"])
+
+                        const mat_neg_color = d3
+                            .scaleLinear()
+                            .domain([-1, 0])
+                            // .domain([-0.05, 0])
+                            .range(["white", "#4D74B7"])
+
+                        metrics.forEach((metric, i) => {
+                            const matg = svg
+                                .append("g")
+                                .attr(
+                                    "transform",
+                                    `translate(${
+                                        i * (width + margin.left + margin.right)
+                                    }, ${
+                                        height -
+                                        cellSize * ours.length -
+                                        margin.top
+                                    })`
+                                )
+
+                            matg.append("g")
+                                .attr(
+                                    "transform",
+                                    `translate(0, ${
+                                        margin.top + cellSize * ours.length
+                                    })`
+                                )
+                                .call(d3.axisBottom(matx))
+                                .selectAll("text")
+                                .attr("transform", "translate(10, 0)rotate(45)")
+                                .style("text-anchor", "start")
+                                .style("font-family", "Times New Roman")
+                                .style("font-size", 30)
+
+                            matg.append("g")
+                                .call(d3.axisLeft(maty))
+                                .selectAll("text")
+                                .style("font-family", "Times New Roman")
+                                .style("font-size", 30)
+
+                            const sigData = data["significance"][metric]
+                            const significances = []
+                            baselines.forEach((baseline) => {
+                                ours.forEach((our) => {
+                                    significances.push({
+                                        significance: sigData[our][baseline],
+                                        baseline: algmap[baseline],
+                                        our: algmap[our],
+                                    })
+                                })
+                            })
+                            const strokeWidth = 3
+                            matg.selectAll("rect.cell")
+                                .data(significances)
+                                .enter()
+                                .append("rect")
+                                .classed("cell", true)
+                                .attr(
+                                    "x",
+                                    (d) => matx(d.baseline) - cellSize / 2
+                                )
+                                .attr("y", (d) => maty(d.our) - cellSize / 2)
+                                .attr("width", (d) => cellSize)
+                                .attr("height", (d) => cellSize)
+                                .attr("fill", (d) => {
+                                    let significance = d.significance
+                                    if (metric.indexOf("time") >= 0) {
+                                        // flag = !flag
+                                        significance = -significance
+                                    }
+                                    return significance > 0
+                                        ? mat_pos_color(significance)
+                                        : mat_neg_color(significance)
+                                })
+
+                            matg.selectAll("text.significance")
+                                .data(significances)
+                                .enter()
+                                .append("text")
+                                .classed("significance", true)
+                                .attr("x", (d) => matx(d.baseline))
+                                .attr("y", (d) => maty(d.our))
+                                .attr("text-anchor", "middle")
+                                .attr("alignment-baseline", "central")
+                                .text((d) =>
+                                    Math.abs(d.significance).toFixed(2)
+                                )
+                        })
+                    }
+                    /*********** ************************************ ***********/
+                    /*********** Draw Significance Comparision Matrix ***********/
+                    /*********** ************************************ ***********/
+
+                    /*********** ************ ***********/
+                    /*********** Draw CI bars ***********/
+                    /*********** ************ ***********/
+                    const left = 0 // -cellSize * 2
+                    const ifDrawPoints = false
+                    const ifDrawHistogram = true
+                    drawCIBars()
+                    function drawCIBars() {
+                        const count = algorithms.length
+                        const unitWidth = width / count
+                        const x = d3
+                            .scalePoint()
+                            .domain(
+                                ours.concat(baselines).map((d) => algmap[d])
+                            ) // This is what is written on the Axis: from 0 to 100
+                            .range([
+                                left + unitWidth / 2,
+                                matrixWidth - unitWidth / 2,
+                            ]) // This is where the axis is placed: from 100 px to 800px
+                            .padding([0]) // Goes between 0 and 1. Default is 0
+
+                        metrics.forEach((metric, i) => {
+                            let max = 1
+                            let min = 0
+                            let ticks = 5
+                            if (metric.indexOf("time") >= 0) {
+                                max = 0
+                                min = Infinity
+                                ticks = 4
+                                algorithms.forEach((algorithm) => {
+                                    data["summary"][algorithm][
+                                        ifDrawPoints || ifDrawHistogram
+                                            ? "data"
+                                            : "ci"
+                                    ][metric] = data["summary"][algorithm][
+                                        ifDrawPoints || ifDrawHistogram
+                                            ? "data"
+                                            : "ci"
+                                    ][metric].map((d) => {
+                                        d /= 1000
+                                        min = Math.min(d, min)
+                                        max = Math.max(d, max)
+
+                                        const interval = 20
+                                        min =
+                                            Math.floor(min / interval) *
+                                            interval
+                                        max =
+                                            Math.ceil(max / interval) * interval
+                                        return d
+                                    })
+                                })
+                            }
+                            let tickValues = new Array(ticks + 1)
+                                .fill(0)
+                                .map((_, i) => (i * (max - min)) / ticks + min)
+
+                            const y = d3
+                                .scaleLinear()
+                                .domain([min, max])
+                                .range([
+                                    height -
+                                        cellSize * ours.length -
+                                        margin.top / 4,
+                                    margin.top,
+                                ])
+
+                            const g = svg
+                                .append("g")
+                                .attr(
+                                    "transform",
+                                    `translate(${
+                                        i * (width + margin.left + margin.right)
+                                    }, 0)`
+                                )
+
+                            g.append("text").attr("y", 10).text(metric)
+
+                            // g.append("g")
+                            //     .attr(
+                            //         "transform",
+                            //         `translate(0, ${
+                            //             height - cellSize * 2 - margin.top / 2
+                            //         })`
+                            //     )
+                            //     .call(d3.axisBottom(x))
+                            //     .selectAll("text")
+                            //     .remove()
+                            //     .attr("transform", "translate(10, 0)rotate(45)")
+                            //     .style("text-anchor", "start")
+                            //     .style("font-family", "Times New Roman")
+                            //     .style("font-size", 30)
+
+                            g.append("g")
+                                .attr("transform", `translate(${left}, 0)`)
+                                .call(d3.axisLeft(y).tickValues(tickValues))
+                                .selectAll("text")
+                                .style("font-family", "Times New Roman")
+                                .style("font-size", 30)
+
+                            for (
+                                let i = min;
+                                i <= max;
+                                i += (max - min) / ticks
+                            ) {
+                                g.append("line")
+                                    .attr("y1", y(i))
+                                    .attr("x1", left)
+                                    .attr("y2", y(i))
+                                    .attr("x2", width)
+                                    .attr("stroke", "#ccc")
+                                    .attr("stroke-dasharray", "5,5")
+                            }
+
+                            const cis = []
+                            const points = []
+                            algorithms.forEach((algorithm) => {
+                                const ci =
+                                    data["summary"][algorithm]["ci"][metric]
+                                cis.push({
+                                    ci,
+                                    algorithm,
+                                })
+                                data["summary"][algorithm]["data"][
+                                    metric
+                                ].forEach((point) => {
+                                    points.push({
+                                        point,
+                                        algorithm,
+                                    })
+                                })
+                            })
+                            const cig = g.append("g")
+                            cig.selectAll("line.cis")
+                                .data(cis)
+                                .enter()
+                                .append("line")
+                                .classed("cis", true)
+                                .attr("fill", "none")
+                                .attr("stroke", (d) =>
+                                    // ours.indexOf(d.algorithm) < 0
+                                    //     ? "#4D74B7"
+                                    //     : "#EC6B41"
+                                    alg2color(d.algorithm)
+                                )
+                                .attr("stroke-width", 5)
+                                .attr("y1", (d) => {
+                                    return y(
+                                        d.ci[0] /
+                                            (metric.indexOf("time") >= 0
+                                                ? 1000
+                                                : 1)
+                                    )
+                                })
+                                .attr(
+                                    "x1",
+                                    (d) =>
+                                        x(algmap[d.algorithm]) - unitWidth / 4
+                                )
+                                .attr("y2", (d) =>
+                                    y(
+                                        d.ci[1] /
+                                            (metric.indexOf("time") >= 0
+                                                ? 1000
+                                                : 1)
+                                    )
+                                )
+                                .attr(
+                                    "x2",
+                                    (d) =>
+                                        x(algmap[d.algorithm]) - unitWidth / 4
+                                )
+
+                            const barWidth = unitWidth / 8
+                            cig.selectAll("line.cis-left")
+                                .data(cis)
+                                .enter()
+                                .append("line")
+                                .classed("cis-left", true)
+                                .attr("fill", "none")
+                                .attr("stroke", (d) =>
+                                    // ours.indexOf(d.algorithm) < 0
+                                    //     ? "#4D74B7"
+                                    //     : "#EC6B41"
+                                    alg2color(d.algorithm)
+                                )
+                                .attr("stroke-width", 3)
+                                .attr("y1", (d) =>
+                                    y(
+                                        d.ci[0] /
+                                            (metric.indexOf("time") >= 0
+                                                ? 1000
+                                                : 1)
+                                    )
+                                )
+                                .attr(
+                                    "x1",
+                                    (d) =>
+                                        x(algmap[d.algorithm]) -
+                                        barWidth -
+                                        unitWidth / 4
+                                )
+                                .attr("y2", (d) =>
+                                    y(
+                                        d.ci[0] /
+                                            (metric.indexOf("time") >= 0
+                                                ? 1000
+                                                : 1)
+                                    )
+                                )
+                                .attr(
+                                    "x2",
+                                    (d) =>
+                                        x(algmap[d.algorithm]) +
+                                        barWidth -
+                                        unitWidth / 4
+                                )
+
+                            cig.selectAll("line.cis-right")
+                                .data(cis)
+                                .enter()
+                                .append("line")
+                                .classed("cis-right", true)
+                                .attr("fill", "none")
+                                .attr("stroke", (d) =>
+                                    // ours.indexOf(d.algorithm) < 0
+                                    //     ? "#4D74B7"
+                                    //     : "#EC6B41"
+                                    alg2color(d.algorithm)
+                                )
+                                .attr("stroke-width", 3)
+                                .attr("y1", (d) => {
+                                    return y(
+                                        d.ci[1] /
+                                            (metric.indexOf("time") >= 0
+                                                ? 1000
+                                                : 1)
+                                    )
+                                })
+                                .attr(
+                                    "x1",
+                                    (d) =>
+                                        x(algmap[d.algorithm]) -
+                                        barWidth -
+                                        unitWidth / 4
+                                )
+                                .attr("y2", (d) =>
+                                    y(
+                                        d.ci[1] /
+                                            (metric.indexOf("time") >= 0
+                                                ? 1000
+                                                : 1)
+                                    )
+                                )
+                                .attr(
+                                    "x2",
+                                    (d) =>
+                                        x(algmap[d.algorithm]) +
+                                        barWidth -
+                                        unitWidth / 4
+                                )
+
+                            if (ifDrawPoints) {
+                                cig.selectAll("circle.point")
+                                    .data(points)
+                                    .enter()
+                                    .append("circle")
+                                    .classed("point", true)
+                                    .attr("fill", (d) =>
+                                        // ours.indexOf(d.algorithm) < 0
+                                        //     ? "#4D74B7"
+                                        //     : "#EC6B41"
+                                        alg2color(d.algorithm)
+                                    )
+                                    .attr("r", barWidth / 2)
+                                    .attr("opacity", 0.3)
+                                    .attr("cy", (d) => {
+                                        return y(d.point)
+                                    })
+                                    .attr(
+                                        "cx",
+                                        (d) =>
+                                            x(algmap[d.algorithm]) +
+                                            barWidth * 2
+                                    )
+                            }
+                            if (ifDrawHistogram) {
+                                const [min, max] = y.domain()
+                                const binWidth = (max - min) / ticks / 4
+                                const bins = []
+                                for (
+                                    let bin = min;
+                                    bin < max;
+                                    bin += binWidth
+                                ) {
+                                    bins.push(
+                                        algorithms
+                                            .map((algorithm) => ({
+                                                algorithm,
+                                                count: 0,
+                                                value: bin + binWidth,
+                                            }))
+                                            .reduce((map, item) => {
+                                                map[item.algorithm] = item
+                                                return map
+                                            }, {})
+                                    )
+                                }
+
+                                points.forEach((d) => {
+                                    let binIndex = Math.min(
+                                        bins.length - 1,
+                                        Math.floor((d.point - min) / binWidth)
+                                    )
+                                    bins[binIndex][d.algorithm].count += 1
+                                })
+                                const bars = []
+                                let maxCount = 0
+                                bins.forEach((bin) => {
+                                    Object.values(bin).forEach(
+                                        ({ algorithm, count, value }) => {
+                                            if (count > 0) {
+                                                bars.push({
+                                                    algorithm,
+                                                    value,
+                                                    count,
+                                                })
+                                                maxCount = Math.max(
+                                                    maxCount,
+                                                    count
+                                                )
+                                            }
+                                        }
+                                    )
+                                })
+                                cig.selectAll("rect.histogram")
+                                    .data(bars)
+                                    .enter()
+                                    .append("rect")
+                                    .classed("histogram", true)
+                                    .attr("fill", (d) => alg2color(d.algorithm))
+                                    .attr("opacity", 0.5)
+                                    .attr("y", (d) => {
+                                        return y(d.value)
+                                    })
+                                    .attr(
+                                        "x",
+                                        (d) =>
+                                            x(algmap[d.algorithm]) +
+                                            barWidth * 2 -
+                                            unitWidth / 4
+                                    )
+                                    .attr(
+                                        "width",
+                                        (d) =>
+                                            ((d.count / maxCount) * unitWidth) /
+                                            2
+                                    )
+                                    .attr("height", (d) =>
+                                        Math.abs(
+                                            y(d.value) - y(d.value + binWidth)
+                                        )
+                                    )
+                                    .attr("stroke", "black")
+                                    .attr("stroke-width", 0.25)
+                            }
+                        })
+                    }
+                    /*********** ************ ***********/
+                    /*********** Draw CI bars ***********/
+                    /*********** ************ ***********/
+
+                    /*********** ****************************** ***********/
+                    /*********** Draw linecharts of per pattern ***********/
+                    /*********** ****************************** ***********/
+                    const measures = ["precision", "recall"]
+                    measures.forEach((measure, i) => {
+                        const patterns = Object.keys(
+                            data["summary"][algorithms[0]]["ci"]
+                        )
+                            .filter((key) => key.indexOf(measure) >= 0)
+                            .map((metric) =>
+                                metric.replaceAll(`-${measure}`, "")
+                            )
+                            .filter((pattern) => pattern != "none")
+                        console.log(patterns)
+
+                        const min = 0
+                        const max = 1
+                        const ticks = 5
+                        const x = d3
+                            .scaleLinear()
+                            .domain([min, max])
+                            .range([0, width * 2]) // This is where the axis is placed: from 100 px to 800px
+                        const y = d3
+                            .scalePoint()
+                            .domain(patterns)
+                            .range([margin.top, height])
+                            .padding([0.5]) // Goes between 0 and 1. Default is 0
+                        const cis = []
+                        patterns.forEach((pattern) => {
+                            algorithms.forEach((algorithm) => {
+                                const ci =
+                                    data["summary"][algorithm]["ci"][
+                                        `${pattern}-${measure}`
+                                    ]
+                                cis.push({
+                                    pattern,
+                                    algorithm,
+                                    ci,
+                                })
+                            })
+                        })
+                        let tickValues = new Array(ticks + 1)
+                            .fill(0)
+                            .map((_, i) => (i * (max - min)) / ticks + min)
+
+
+                        const g = svg
+                            .append("g")
+                            .attr(
+                                "transform",
+                                `translate(${
+                                    (3 + i * 2) *
+                                    (width + margin.left + margin.right)
+                                }, 0)`
+                            )
+
+
+
+
+                        for (let i = 0; i < patterns.length - 1; i++) {
+                            g.append("line")
+                                .attr("x1", x(min))
+                                .attr(
+                                    "y1",
+                                    (y(patterns[i]) + y(patterns[i + 1])) / 2
+                                )
+                                .attr("x2", x(max))
+                                .attr(
+                                    "y2",
+                                    (y(patterns[i]) + y(patterns[i + 1])) / 2
+                                )
+                                .attr("stroke", "#cccccc")
+                                .attr("stroke-width", 2)
+                        }
+                        for (let i = 0; i < patterns.length - 1; i++) {
+                            if (i % 2 == 0) {
+                                const barHeight = Math.abs(y(patterns[i + 1]) - y(patterns[i]))
+                                g.append('rect')
+                                .attr("x", x(min))
+                                .attr(
+                                    "y",
+                                    (y(patterns[i]) + y(patterns[i + 1])) / 2 - barHeight
+                                )
+                                .attr("width", x(max) - x(min))
+                                .attr("height", barHeight)
+                                .attr("fill", "#efefef")
+                            }
+                        }
+                        for (
+                            let i = min + (max - min) / ticks;
+                            i <= max;
+                            i += (max - min) / ticks
+                        ) {
+                            g.append("line")
+                                .attr("x1", x(i))
+                                .attr("y1", margin.top)
+                                .attr("x2", x(i))
+                                .attr("y2", height)
+                                .attr("stroke", "#ccc")
+                                .attr("stroke-dasharray", "5,5")
+                        }
+
+                        g.append("text").attr("y", 10).text(measure)
+
+                        g.append("g")
+                            .attr("transform", `translate(0, ${height})`)
+                            .call(d3.axisBottom(x).tickValues(tickValues))
+                            .selectAll("text")
+                            .attr("transform", "translate(0, 5)")
+                            .attr("text-anchor", "middle")
+                            .style("font-family", "Times New Roman")
+                            .style("font-size", 30)
+
+                        g.append("g")
+                            .attr("transform", `translate(0, 0)`)
+                            .call(d3.axisLeft(y))
+                            .selectAll("text")
+                            .text(d => d.replace("bipartite core", "bi-clique"))
+                            .style("font-family", "Times New Roman")
+                            .style("font-size", 30)
+
+                        const barWidth = 5
+                        const offset = d3
+                            .scalePoint()
+                            .domain(baselines)
+                            .range([
+                                -Math.floor(baselines.length / 2) *
+                                    barWidth *
+                                    2,
+                                Math.floor(baselines.length / 2) * barWidth * 2,
+                            ])
+                        const cig = g.append("g")
+                        cig.selectAll("line.cis")
+                            .data(cis)
+                            .enter()
+                            .append("line")
+                            .classed("cis", true)
+                            .attr("fill", "none")
+                            .attr("stroke", (d) => alg2color(d.algorithm))
+                            .attr("stroke-width", 3)
+                            .attr("x1", (d) => {
+                                return x(d.ci[0])
+                            })
+                            .attr(
+                                "y1",
+                                (d) => y(d.pattern) + offset(d.algorithm)
+                            )
+                            .attr("x2", (d) => x(d.ci[1]))
+                            .attr(
+                                "y2",
+                                (d) => y(d.pattern) + offset(d.algorithm)
+                            )
+
+                        cig.selectAll("line.cis-left")
+                            .data(cis)
+                            .enter()
+                            .append("line")
+                            .classed("cis-left", true)
+                            .attr("fill", "none")
+                            .attr("stroke", (d) =>
+                                // ours.indexOf(d.algorithm) < 0
+                                //     ? "#4D74B7"
+                                //     : "#EC6B41"
+                                alg2color(d.algorithm)
+                            )
+                            .attr("stroke-width", 3)
+                            .attr("x1", (d) => x(d.ci[0]))
+                            .attr(
+                                "y1",
+                                (d) =>
+                                    y(d.pattern) -
+                                    barWidth +
+                                    offset(d.algorithm)
+                            )
+                            .attr("x2", (d) => x(d.ci[0]))
+                            .attr(
+                                "y2",
+                                (d) =>
+                                    y(d.pattern) +
+                                    barWidth +
+                                    offset(d.algorithm)
+                            )
+
+                        cig.selectAll("line.cis-right")
+                            .data(cis)
+                            .enter()
+                            .append("line")
+                            .classed("cis-right", true)
+                            .attr("fill", "none")
+                            .attr("stroke", (d) =>
+                                // ours.indexOf(d.algorithm) < 0
+                                //     ? "#4D74B7"
+                                //     : "#EC6B41"
+                                alg2color(d.algorithm)
+                            )
+                            .attr("stroke-width", 3)
+                            .attr("x1", (d) => {
+                                return x(d.ci[1])
+                            })
+                            .attr(
+                                "y1",
+                                (d) =>
+                                    y(d.pattern) -
+                                    barWidth +
+                                    offset(d.algorithm)
+                            )
+                            .attr("x2", (d) => x(d.ci[1]))
+                            .attr(
+                                "y2",
+                                (d) =>
+                                    y(d.pattern) +
+                                    barWidth +
+                                    offset(d.algorithm)
+                            )
+                    })
+
+                    /*********** ****************************** ***********/
+                    /*********** Draw linecharts of per pattern ***********/
+                    /*********** ****************************** ***********/
+                }
+            )
+        </script>
+    </body>
+</html>

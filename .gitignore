@@ -1,0 +1,9 @@
+.idea
+.DS_Store
+output
+__pycache__
+node_modules
+logs
+venv
+/output
+*/summarization/*.json

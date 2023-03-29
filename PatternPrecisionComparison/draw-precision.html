@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <title>Title</title>
+    </head>
+
+    <body>
+        <div id="my_dataviz"></div>
+
+        <script src="../visualization/libs/d3.v7.min.js"></script>
+        <script src="../visualization/libs/papaparse.js"></script>
+        <script>
+            async function main() {
+                // set the dimensions and margins of the graph
+                const totalWidth = 1280
+                var margin = { top: 20, right: 20, bottom: 80, left: 60 },
+                    width = totalWidth / 3 - margin.left - margin.right,
+                    height = 350 - margin.top - margin.bottom
+
+                // append the svg object to the body of the page
+                var svg = d3
+                    .select("#my_dataviz")
+                    .append("svg")
+                    .attr("width", totalWidth)
+                    .attr("height", height + margin.top + margin.bottom)
+                    .append("g")
+                    .attr(
+                        "transform",
+                        "translate(" + margin.left + "," + margin.top + ")"
+                    )
+
+                async function parseCSV(path) {
+                    const response = await fetch(path)
+                    const promise = response.text()
+                    const content = Papa.parse(await promise.then()).data
+                    return content
+                }
+                const content = await parseCSV("./probabilities.csv")
+                const params = content[0]
+                const probabilities = content
+                    .slice(1)
+                    .filter((row) => row.length > 0)
+                    .map((row) => row.map(Number))
+                const fixedValues = probabilities
+                    .reduce(
+                        (counts, row) => {
+                            row.forEach((value, i) => {
+                                const param = params[i]
+                                counts[i][value] = counts[i][value]
+                                    ? counts[i][value] + 1
+                                    : 1
+                            })
+                            return counts
+                        },
+                        params.map((_) => ({}))
+                    )
+                    .map((count, i) => {
+                        const keys = Object.keys(count)
+                        const maxIndex = d3.maxIndex(keys, (key) => count[key])
+                        return { value: +keys[maxIndex], param: params[i] }
+                    })
+                    .reduce((map, item) => {
+                        map[item.param] = item.value
+                        return map
+                    }, {})
+
+                const precisionContent = await parseCSV("./precision.csv")
+                const names = precisionContent[0]
+                const precisionData = precisionContent.slice(1).map((row) =>
+                    names.reduce((map, name) => {
+                        map[name] = row[names.indexOf(name)]
+                        return map
+                    }, {})
+                )
+
+                params.forEach((param, i) => {
+                    const range = probabilities.map((row) => row[i]).sort()
+
+                    const x = d3
+                        .scaleLinear()
+                        .domain(d3.extent(range))
+                        .range([0, width])
+                    const y = d3
+                        .scaleLinear()
+                        .domain([0, 100])
+                        .range([height, 0])
+
+                    // fixing param
+                    const fixedValue = fixedValues[param]
+                    let data = precisionData.filter(
+                        (item) =>
+                            +item[param] !== fixedValue ||
+                            params.every(
+                                (name) => +item[name] == fixedValues[name]
+                            )
+                    )
+                    data = data.sort((a, b) =>
+                        d3.ascending(+a[param], +b[param])
+                    )
+                    console.log(data)
+
+                    const g = svg
+                        .append("g")
+                        .attr(
+                            "transform",
+                            `translate(${
+                                i * (width + margin.left + margin.right)
+                            }, 0)`
+                        )
+
+                    g.append("g")
+                        .attr("transform", `translate(0, ${height})`)
+                        .call(d3.axisBottom(x).ticks(5))
+
+                    g.append("g").call(d3.axisLeft(y).ticks(5))
+
+                    range.forEach((xValue) => {
+                        g.append("line")
+                            .attr("x1", x(xValue))
+                            .attr("y1", y(0))
+                            .attr("x2", x(xValue))
+                            .attr("y2", y(100))
+                            .attr("stroke", "#ccc")
+                            .attr("stroke-dasharray", "5,5")
+                    })
+
+                    const algNames = [...new Set(data.map((item) => item.ALG))]
+                    const colorMap = {
+                        VoG: "#4D74B7",
+                        "Ours (GRD)": "#ff7f00",
+                        "Ours (RDM)": "#cab2d6",
+                    }
+                    algNames.forEach((algName) => {
+                        const subData = data
+                            .filter((item) => item.ALG === algName)
+                            .map((d) => ({
+                                v: d.precision * 100,
+                                p: d[param],
+                            }))
+                        g.append("path")
+                            .datum(subData)
+                            .attr("fill", "none")
+                            .attr("stroke", colorMap[algName])
+                            .attr("stroke-width", 3)
+                            .attr(
+                                "d",
+                                d3
+                                    .line()
+                                    .x(function (d) {
+                                        return x(d.p)
+                                    })
+                                    .y(function (d) {
+                                        return y(d.v)
+                                    })
+                            )
+                    })
+
+                    // axis name
+                    g.append("text")
+                        .text("Precision (%)")
+                        .attr("x", 10)
+                        .attr("y", 10)
+                    g.append("text")
+                        .text(`${param} (%)`)
+                        .attr("x", width)
+                        .attr("y", height - 10)
+                        .attr("text-anchor", "end")
+
+                    g.append("text")
+                        .text(
+                            params
+                                .filter((name) => name != param)
+                                .map((name) => `${name}=${fixedValues[name]}%`)
+                                .join(", ")
+                        )
+                        .attr("x", width)
+                        .attr("y", 50)
+                        .attr("text-anchor", "end")
+
+                    const legend = g
+                        .append("g")
+                        .attr(
+                            "transform",
+                            `translate(${width / 2}, ${height + 60})`
+                        )
+                    legend
+                        .append("text")
+                        .text(algNames[i])
+                        .attr("x", -10)
+                        .attr("y", 0)
+                        .attr("text-anchor", "end")
+                        .attr("alignment-baseline", "central")
+
+                    legend
+                        .append("line")
+                        .attr("x1", 0)
+                        .attr("x2", 50)
+                        .attr("y1", 0)
+                        .attr("y2", 0)
+                        .attr("stroke-width", 3)
+                        .attr("stroke", colorMap[algNames[i]])
+                })
+
+                d3.selectAll("text").attr(
+                    "style",
+                    "font-size: 32px!important; font-family: 'Times New Roman';"
+                )
+            }
+            main()
+        </script>
+    </body>
+</html>
