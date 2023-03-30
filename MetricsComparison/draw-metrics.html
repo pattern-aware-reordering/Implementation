@@ -219,7 +219,7 @@
                             ) // This is what is written on the Axis: from 0 to 100
                             .range([
                                 left + unitWidth / 2,
-                                matrixWidth - unitWidth / 2,
+                                matrixWidth - unitWidth / 2
                             ]) // This is where the axis is placed: from 100 px to 800px
                             .padding([0]) // Goes between 0 and 1. Default is 0
 
@@ -304,125 +304,10 @@
                                     })
                                 })
                             })
+
                             const cig = g.append("g")
-                            cig.selectAll("line.cis")
-                                .data(cis)
-                                .enter()
-                                .append("line")
-                                .classed("cis", true)
-                                .attr("fill", "none")
-                                .attr("stroke", (d) =>
-                                    // ours.indexOf(d.algorithm) < 0
-                                    //     ? "#4D74B7"
-                                    //     : "#EC6B41"
-                                    alg2color(d.algorithm)
-                                )
-                                .attr("stroke-width", 5)
-                                .attr("y1", (d) => {
-                                    return y(d.ci[0])
-                                })
-                                .attr(
-                                    "x1",
-                                    (d) =>
-                                        x(algmap[d.algorithm]) - unitWidth / 4
-                                )
-                                .attr("y2", (d) => y(d.ci[1]))
-                                .attr(
-                                    "x2",
-                                    (d) =>
-                                        x(algmap[d.algorithm]) - unitWidth / 4
-                                )
-
                             const barWidth = unitWidth / 8
-                            cig.selectAll("line.cis-left")
-                                .data(cis)
-                                .enter()
-                                .append("line")
-                                .classed("cis-left", true)
-                                .attr("fill", "none")
-                                .attr("stroke", (d) =>
-                                    // ours.indexOf(d.algorithm) < 0
-                                    //     ? "#4D74B7"
-                                    //     : "#EC6B41"
-                                    alg2color(d.algorithm)
-                                )
-                                .attr("stroke-width", 3)
-                                .attr("y1", (d) => {
-                                    return y(d.ci[0])
-                                })
-                                .attr(
-                                    "x1",
-                                    (d) =>
-                                        x(algmap[d.algorithm]) -
-                                        barWidth -
-                                        unitWidth / 4
-                                )
-                                .attr("y2", (d) => y(d.ci[0]))
-                                .attr(
-                                    "x2",
-                                    (d) =>
-                                        x(algmap[d.algorithm]) +
-                                        barWidth -
-                                        unitWidth / 4
-                                )
 
-                            cig.selectAll("line.cis-right")
-                                .data(cis)
-                                .enter()
-                                .append("line")
-                                .classed("cis-right", true)
-                                .attr("fill", "none")
-                                .attr("stroke", (d) =>
-                                    // ours.indexOf(d.algorithm) < 0
-                                    //     ? "#4D74B7"
-                                    //     : "#EC6B41"
-                                    alg2color(d.algorithm)
-                                )
-                                .attr("stroke-width", 3)
-                                .attr("y1", (d) => {
-                                    return y(d.ci[1])
-                                })
-                                .attr(
-                                    "x1",
-                                    (d) =>
-                                        x(algmap[d.algorithm]) -
-                                        barWidth -
-                                        unitWidth / 4
-                                )
-                                .attr("y2", (d) => y(d.ci[1]))
-                                .attr(
-                                    "x2",
-                                    (d) =>
-                                        x(algmap[d.algorithm]) +
-                                        barWidth -
-                                        unitWidth / 4
-                                )
-
-                            if (ifDrawPoints) {
-                                cig.selectAll("circle.point")
-                                    .data(points)
-                                    .enter()
-                                    .append("circle")
-                                    .classed("point", true)
-                                    .attr("fill", (d) =>
-                                        // ours.indexOf(d.algorithm) < 0
-                                        //     ? "#4D74B7"
-                                        //     : "#EC6B41"
-                                        alg2color(d.algorithm)
-                                    )
-                                    .attr("r", barWidth / 2)
-                                    .attr("opacity", 0.3)
-                                    .attr("cy", (d) => {
-                                        return y(d.point)
-                                    })
-                                    .attr(
-                                        "cx",
-                                        (d) =>
-                                            x(algmap[d.algorithm]) +
-                                            barWidth * 2 -
-                                            unitWidth / 4
-                                    )
-                            }
                             if (ifDrawHistogram) {
                                 const [min, max] = y.domain()
                                 const binWidth = (max - min) / ticks / 4
@@ -478,30 +363,135 @@
                                     .append("rect")
                                     .classed("histogram", true)
                                     .attr("fill", (d) => alg2color(d.algorithm))
-                                    .attr("opacity", 0.5)
+                                    // .attr("opacity", 0.5)
                                     .attr("y", (d) => {
                                         return y(d.value)
                                     })
                                     .attr(
                                         "x",
                                         (d) =>
-                                            x(algmap[d.algorithm]) +
-                                            barWidth * 2 -
-                                            unitWidth / 4
+                                            x(algmap[d.algorithm]) - unitWidth/2
                                     )
                                     .attr(
                                         "width",
                                         (d) =>
-                                            ((d.count / maxCount) * unitWidth) /
-                                            2
+                                            ((d.count / maxCount) * unitWidth)
                                     )
                                     .attr("height", (d) =>
                                         Math.abs(
                                             y(d.value) - y(d.value + binWidth)
                                         )
                                     )
-                                    .attr("stroke", "black")
+                                    .attr("stroke", "white")
                                     .attr("stroke-width", 0.25)
+                                    .attr("transform",
+                                        (d) =>
+                                            `translate(${unitWidth/2 - ((d.count / maxCount) * unitWidth/2)}, 0)`)
+                            }
+
+                            //draw ci lines
+                            cig.selectAll("line.cis")
+                                .data(cis)
+                                .enter()
+                                .append("line")
+                                .classed("cis", true)
+                                .attr("fill", "none")
+                                .attr("stroke", (d) =>
+                                    "#565656"
+                                )
+                                .attr("stroke-width", 3)
+                                .attr("y1", (d) => {
+                                    return y(d.ci[0])
+                                })
+                                .attr(
+                                    "x1",
+                                    (d) =>
+                                        x(algmap[d.algorithm])
+                                )
+                                .attr("y2", (d) => y(d.ci[1]))
+                                .attr(
+                                    "x2",
+                                    (d) =>
+                                        x(algmap[d.algorithm])
+                                )
+
+                            cig.selectAll("line.cis-left")
+                                .data(cis)
+                                .enter()
+                                .append("line")
+                                .classed("cis-left", true)
+                                .attr("fill", "none")
+                                .attr("stroke", (d) => "#565656"
+                                )
+                                .attr("stroke-width", 3)
+                                .attr("y1", (d) => {
+                                    return y(d.ci[0])
+                                })
+                                .attr(
+                                    "x1",
+                                    (d) =>
+                                        x(algmap[d.algorithm])-
+                                        barWidth
+                                )
+                                .attr("y2", (d) => y(d.ci[0]))
+                                .attr(
+                                    "x2",
+                                    (d) =>
+                                        x(algmap[d.algorithm]) +
+                                        barWidth
+                                )
+
+                            cig.selectAll("line.cis-right")
+                                .data(cis)
+                                .enter()
+                                .append("line")
+                                .classed("cis-right", true)
+                                .attr("fill", "none")
+                                .attr("stroke", (d) =>
+                                    "#565656"
+                                )
+                                .attr("stroke-width", 3)
+                                .attr("y1", (d) => {
+                                    return y(d.ci[1])
+                                })
+                                .attr(
+                                    "x1",
+                                    (d) =>
+                                        x(algmap[d.algorithm]) -
+                                        barWidth
+                                )
+                                .attr("y2", (d) => y(d.ci[1]))
+                                .attr(
+                                    "x2",
+                                    (d) =>
+                                        x(algmap[d.algorithm]) +
+                                        barWidth
+                                )
+
+                            if (ifDrawPoints) {
+                                cig.selectAll("circle.point")
+                                    .data(points)
+                                    .enter()
+                                    .append("circle")
+                                    .classed("point", true)
+                                    .attr("fill", (d) =>
+                                        // ours.indexOf(d.algorithm) < 0
+                                        //     ? "#4D74B7"
+                                        //     : "#EC6B41"
+                                        alg2color(d.algorithm)
+                                    )
+                                    .attr("r", barWidth / 2)
+                                    .attr("opacity", 0.3)
+                                    .attr("cy", (d) => {
+                                        return y(d.point)
+                                    })
+                                    .attr(
+                                        "cx",
+                                        (d) =>
+                                            x(algmap[d.algorithm]) +
+                                            barWidth * 2 -
+                                            unitWidth / 4
+                                    )
                             }
                         })
                     }
